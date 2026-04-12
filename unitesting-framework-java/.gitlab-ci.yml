@@ -1,0 +1,52 @@
+# =============================================================================
+# .gitlab-ci.yml – SQL unit-testing pipeline (Java / Maven)
+#
+# Spins up a SQL Server 2022 Docker service, bootstraps the test database,
+# and runs the JUnit 5 suite via Maven.  Surefire XML artefacts are published
+# so test results are visible in the GitLab UI.
+# =============================================================================
+
+stages:
+  - test
+
+variables:
+  # SQL Server service credentials – override in GitLab CI/CD Settings > Variables
+  SA_PASSWORD: "Str0ngPass!2024"
+  DB_HOST: "sqlserver"
+  DB_PORT: "1433"
+  DB_NAME: "TestDB"
+  DB_USER: "sa"
+  DB_PASSWORD: "Str0ngPass!2024"
+
+# -----------------------------------------------------------------------------
+# Job: sql-unit-tests
+# -----------------------------------------------------------------------------
+sql-unit-tests:
+  stage: test
+  image: maven:3.9.6-eclipse-temurin-11
+
+  services:
+    - name: mcr.microsoft.com/mssql/server:2022-latest
+      alias: sqlserver
+      variables:
+        ACCEPT_EULA: "Y"
+        MSSQL_SA_PASSWORD: "Str0ngPass!2024"
+
+  before_script:
+    # Pre-download dependencies into the local Maven cache
+    - mvn -q dependency:go-offline
+
+  script:
+    # Run the full JUnit 5 test suite.
+    # DatabaseSetup.setup() is called automatically from BaseTest's static
+    # initialiser when the first test class is loaded – no separate bootstrap
+    # step is needed.
+    - mvn test
+
+  artifacts:
+    when: always
+    reports:
+      junit: target/surefire-reports/TEST-*.xml
+    paths:
+      - target/surefire-reports/
+    expire_in: 30 days
