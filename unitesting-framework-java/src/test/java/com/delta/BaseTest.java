@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.Statement;
 
 /**
  * BaseTest – shared connection and table-cleanup logic for all test classes.
@@ -14,8 +13,9 @@ import java.sql.Statement;
  *   • The static initialiser block replaces the session-scoped {@code db_conn}
  *     fixture: the database is bootstrapped and a single JDBC connection is
  *     opened once for the entire JVM run.
- *   • {@link #cleanTables()} replaces the autouse {@code clean_tables} fixture:
- *     all test tables are truncated before every individual test method.
+ *   • {@link #cleanAndReseed()} replaces the autouse {@code clean_tables} fixture:
+ *     all test tables are reset to the baseline sample data (via
+ *     {@code 03_sample_data.sql}) before every individual test method.
  */
 public abstract class BaseTest {
 
@@ -46,17 +46,14 @@ public abstract class BaseTest {
     }
 
     /**
-     * Delete all rows from every test table before each test.
-     * Tables are deleted in child-first order to satisfy FK constraints.
+     * Reset all test tables to the baseline sample data before each test.
+     *
+     * {@code 03_sample_data.sql} begins with DELETE statements (FK-safe order)
+     * and then re-inserts the standard set of rows, so this single call both
+     * cleans and reseeds – giving every test the same predictable starting state.
      */
     @BeforeEach
-    void cleanTables() throws SQLException {
-        try (Statement stmt = conn.createStatement()) {
-            stmt.execute("DELETE FROM dbo.STAGING_FOLDERS");
-            stmt.execute("DELETE FROM dbo.STAGING");
-            stmt.execute("DELETE FROM dbo.TARGET_FOLDERS");
-            stmt.execute("DELETE FROM dbo.HASH_REGISTRY");
-            stmt.execute("DELETE FROM dbo.SYS_DELTA_LOG");
-        }
+    void cleanAndReseed() throws Exception {
+        DatabaseSetup.loadSampleData();
     }
 }

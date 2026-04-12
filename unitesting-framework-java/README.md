@@ -24,7 +24,8 @@ unitesting-framework-java/
         └── resources/
             └── sql/
                 ├── 01_create_tables.sql            # DDL: create all test tables
-                └── 02_create_procedures.sql        # DDL: create stored procedures under test
+                ├── 02_create_procedures.sql        # DDL: create stored procedures under test
+                └── 03_sample_data.sql              # DML: baseline sample data for every table
 ```
 
 ---
@@ -226,6 +227,28 @@ DDL script that (re-)creates the stored procedures under test:
   `SYS_DELTA_LOG`.
 - **`dbo.USP_DELTA_MASTER`** – orchestrator that calls every entity-level delta SP
   in sequence, wrapping each call in `BEGIN TRY … END CATCH`.
+
+---
+
+### `src/test/resources/sql/03_sample_data.sql`
+
+DML script that seeds all tables with a representative baseline dataset.
+It is executed automatically after the DDL scripts during initial setup and is
+re-run by `BaseTest.cleanAndReseed()` before every individual test, giving each
+test a clean, predictable starting state.
+
+The script first deletes all rows (FK-safe order) then inserts:
+
+| Table | Rows | Description |
+|---|---|---|
+| `dbo.STAGING` | 2 | Batch 1 (prior run, fully processed) and Batch 2 (new unprocessed batch) |
+| `dbo.STAGING_FOLDERS` | 6 | 2 processed (`Is_Processed='Y'`) from Batch 1; 3 unprocessed from Batch 2 (1 new, 1 unchanged, 1 duplicate); 1 inactive/retired folder |
+| `dbo.TARGET_FOLDERS` | 2 | Pre-existing processed records matching Batch 1 |
+| `dbo.HASH_REGISTRY` | 3 | Hashes for the 2 TARGET rows (already processed) + 1 "unchanged" hash for `SAMPLE-F004` |
+| `dbo.SYS_DELTA_LOG` | 1 | Representative prior-run audit row showing a successful 2-row run 60 minutes ago |
+
+Each test adds its own specific rows on top of (or instead of) this baseline via
+the `DbUtils` insert helpers.
 
 ---
 

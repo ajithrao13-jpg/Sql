@@ -48,11 +48,12 @@ public class DatabaseSetup {
         setup();
     }
 
-    /** Full setup: wait → create DB → execute DDL scripts. */
+    /** Full setup: wait → create DB → execute DDL scripts → seed sample data. */
     public static void setup() throws Exception {
         waitForSqlServer(30, 5);
         createDatabase();
         executeSqlFiles();
+        loadSampleData();
         System.out.println("Database setup complete.");
     }
 
@@ -95,6 +96,27 @@ public class DatabaseSetup {
                 for (String batch : splitGoBatches(sql)) {
                     stmt.execute(batch);
                 }
+            }
+        }
+    }
+
+    /**
+     * Re-seed all tables with the baseline sample data defined in
+     * {@code sql/03_sample_data.sql}.  Called once at setup and again
+     * by {@link com.delta.BaseTest#cleanAndReseed()} before each test.
+     */
+    public static void loadSampleData() throws Exception {
+        String script = "sql/03_sample_data.sql";
+        URL resource = DatabaseSetup.class.getClassLoader().getResource(script);
+        if (resource == null) {
+            throw new FileNotFoundException("SQL script not found on classpath: " + script);
+        }
+        System.out.printf("Loading sample data from %s ...%n", script);
+        String sql = readResource(resource);
+        try (Connection conn = DriverManager.getConnection(testUrl());
+             Statement stmt = conn.createStatement()) {
+            for (String batch : splitGoBatches(sql)) {
+                stmt.execute(batch);
             }
         }
     }
