@@ -1,35 +1,44 @@
 # =============================================================================
-# .gitlab-ci.yml – SQL unit-testing pipeline (tSQLt edition)
+# .gitlab-ci.yml – tSQLt unit-testing pipeline (sqlcmd only, no Python)
 #
 # Spins up a SQL Server 2022 Docker service, bootstraps the test database,
-# installs tSQLt, loads the tSQLt test classes, and runs the pytest suite.
-# The pytest tests are thin runners that execute tSQLt via pyodbc and
-# surface each tSQLt result as an individual pytest test case.
+# installs tSQLt, loads the T-SQL test classes, and runs all tests using
+# sqlcmd.  No Python or external test runners are required – the entire
+# pipeline is driven by GitLab CI shell commands and sqlcmd.
 #
-# JUnit XML + HTML artefacts are published so test results are visible in
-# the GitLab UI.
+# Pipeline steps
+# --------------
+# 1. Install sqlcmd (mssql-tools18) in the runner image.
+# 2. Wait for SQL Server to accept connections.
+# 3. Create the test database; enable CLR + TRUSTWORTHY (tSQLt requirement).
+# 4. Download and install tSQLt from GitHub releases.
+# 5. Execute DDL scripts: tables (01_) then stored procedures (02_).
+# 6. Load tSQLt test classes (03_ folders tests, 04_ master tests).
+# 7. Run all tests with tSQLt.RunAll; capture JUnit XML; fail on any error.
 # =============================================================================
 
 stages:
   - test
 
 variables:
-  # SQL Server service credentials – override in GitLab CI/CD Settings > Variables
-  SA_PASSWORD: "Str0ngPass!2024"
+  # SQL Server credentials – override via GitLab CI/CD Settings > Variables
+  MSSQL_SA_PASSWORD: "Str0ngPass!2024"
   DB_HOST: "sqlserver"
   DB_PORT: "1433"
   DB_NAME: "TestDB"
-  DB_USER: "sa"
-  DB_PASSWORD: "Str0ngPass!2024"
-  # Override to pin a specific tSQLt release zip URL
+  # Pin a specific tSQLt release; override via CI/CD variable to upgrade
   TSQLT_DOWNLOAD_URL: "https://github.com/tSQLt-org/tSQLt/releases/download/v1.0.8317.15834/tSQLt.zip"
+
+# Convenience alias used throughout this file
+.sqlcmd: &sqlcmd >-
+  sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" -d "$DB_NAME" -C
 
 # -----------------------------------------------------------------------------
 # Job: sql-unit-tests
 # -----------------------------------------------------------------------------
 sql-unit-tests:
   stage: test
-  image: python:3.11-slim
+  image: debian:bookworm-slim
 
   services:
     - name: mcr.microsoft.com/mssql/server:2022-latest
@@ -37,36 +46,93 @@ sql-unit-tests:
       variables:
         ACCEPT_EULA: "Y"
         MSSQL_SA_PASSWORD: "Str0ngPass!2024"
-        # tSQLt uses CLR assemblies; disable strict security so the install
-        # script can mark tSQLt assemblies as SAFE / EXTERNAL_ACCESS.
-        MSSQL_ENABLE_HADR: "0"
 
   before_script:
-    # ── System dependencies ──────────────────────────────────────────────────
+    # ── System packages ───────────────────────────────────────────────────────
     - apt-get update -qq
-    - apt-get install -y -qq curl gnupg2 apt-transport-https ca-certificates
+    - apt-get install -y -qq curl gnupg2 apt-transport-https ca-certificates unzip
 
-    # ── Microsoft ODBC Driver 18 for SQL Server ──────────────────────────────
-    - curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
-    - curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list -o /etc/apt/sources.list.d/mssql-release.list
+    # ── sqlcmd (mssql-tools18) ────────────────────────────────────────────────
+    - curl -fsSL https://packages.microsoft.com/keys/microsoft.asc
+        | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+    - curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list
+        -o /etc/apt/sources.list.d/mssql-release.list
     - apt-get update -qq
-    - ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18 unixodbc-dev
+    - ACCEPT_EULA=Y apt-get install -y -qq mssql-tools18 unixodbc-dev
+    - export PATH="$PATH:/opt/mssql-tools18/bin"
 
-    # ── Python dependencies ──────────────────────────────────────────────────
-    - pip install -q -r requirements.txt
+    # ── Wait for SQL Server ───────────────────────────────────────────────────
+    - |
+      echo "Waiting for SQL Server at $DB_HOST:$DB_PORT ..."
+      for i in $(seq 1 30); do
+        if sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" -C \
+             -Q "SELECT 1" > /dev/null 2>&1; then
+          echo "  SQL Server is ready (attempt $i)."; break
+        fi
+        echo "  Attempt $i/30 failed, retrying in 5 s ..."; sleep 5
+      done
 
-    # ── Bootstrap test database, install tSQLt, load test classes ────────────
-    # setup_db.py:
-    #   1. Waits for SQL Server readiness
-    #   2. Creates the test database
-    #   3. Enables CLR + sets TRUSTWORTHY ON (required by tSQLt)
-    #   4. Executes schema DDL (01_create_tables, 02_create_procedures)
-    #   5. Downloads and installs tSQLt
-    #   6. Executes tSQLt test-class SQL files (03_… 04_…)
-    - python tests/setup_db.py
+    # ── Create database; enable CLR + TRUSTWORTHY (required by tSQLt) ─────────
+    - |
+      sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" -C -Q "
+        IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'$DB_NAME')
+          CREATE DATABASE [$DB_NAME];
+        EXEC sp_configure 'show advanced options', 1; RECONFIGURE;
+        EXEC sp_configure 'clr enabled',           1; RECONFIGURE;
+        EXEC sp_configure 'clr strict security',   0; RECONFIGURE;
+        ALTER DATABASE [$DB_NAME] SET TRUSTWORTHY ON;
+      "
+
+    # ── Download and install tSQLt ────────────────────────────────────────────
+    - curl -fsSL "$TSQLT_DOWNLOAD_URL" -o /tmp/tsqlt.zip
+    - unzip -q /tmp/tsqlt.zip -d /tmp/tsqlt
+    - TSQLT_SQL=$(find /tmp/tsqlt -iname "tSQLt.class.sql" | head -1)
+    - echo "Installing tSQLt from $TSQLT_SQL ..."
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i "$TSQLT_SQL"
+
+    # ── Schema DDL: tables then stored procedures ────────────────────────────
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i tests/sql/01_create_tables.sql
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i tests/sql/02_create_procedures.sql
+
+    # ── Load tSQLt test classes ───────────────────────────────────────────────
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i tests/sql/03_tsqlt_tests_folders.sql
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i tests/sql/04_tsqlt_tests_master.sql
 
   script:
-    - pytest tests/ --tb=short --junitxml=test-results.xml --html=test-report.html --self-contained-html
+    # ── Run all tSQLt tests ───────────────────────────────────────────────────
+    # Wrap RunAll in TRY/CATCH so the job continues to the XML-capture step
+    # even when tests fail (tSQLt raises an error on any failure).
+    - |
+      sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" \
+        -d "$DB_NAME" -C \
+        -Q "BEGIN TRY EXEC tSQLt.RunAll END TRY BEGIN CATCH END CATCH"
+
+    # ── Capture JUnit-compatible XML for GitLab test reports ─────────────────
+    # -h -1  : suppress column headers
+    # -y 0   : unlimited column width
+    # SET NOCOUNT ON : suppress "(N rows affected)" footer
+    - |
+      sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" \
+        -d "$DB_NAME" -C -h -1 -y 0 \
+        -Q "SET NOCOUNT ON; EXEC tSQLt.XmlResultFormatter" \
+        | sed '/^[[:space:]]*$/d' > test-results.xml
+
+    # ── Fail the job if any test failed or errored ────────────────────────────
+    - |
+      FAILED=$(sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" \
+        -d "$DB_NAME" -C -h -1 -y 0 \
+        -Q "SET NOCOUNT ON;
+            SELECT CAST(COUNT(*) AS VARCHAR(10))
+            FROM   tSQLt.TestResult
+            WHERE  Result IN ('Failure', 'Error');" \
+        | tr -d ' \r\n')
+      echo "Failed/errored tests: $FAILED"
+      test "$FAILED" = "0"
 
   artifacts:
     when: always
@@ -74,5 +140,4 @@ sql-unit-tests:
       junit: test-results.xml
     paths:
       - test-results.xml
-      - test-report.html
     expire_in: 30 days
