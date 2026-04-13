@@ -1,0 +1,78 @@
+# =============================================================================
+# .gitlab-ci.yml – SQL unit-testing pipeline (tSQLt edition)
+#
+# Spins up a SQL Server 2022 Docker service, bootstraps the test database,
+# installs tSQLt, loads the tSQLt test classes, and runs the pytest suite.
+# The pytest tests are thin runners that execute tSQLt via pyodbc and
+# surface each tSQLt result as an individual pytest test case.
+#
+# JUnit XML + HTML artefacts are published so test results are visible in
+# the GitLab UI.
+# =============================================================================
+
+stages:
+  - test
+
+variables:
+  # SQL Server service credentials – override in GitLab CI/CD Settings > Variables
+  SA_PASSWORD: "Str0ngPass!2024"
+  DB_HOST: "sqlserver"
+  DB_PORT: "1433"
+  DB_NAME: "TestDB"
+  DB_USER: "sa"
+  DB_PASSWORD: "Str0ngPass!2024"
+  # Override to pin a specific tSQLt release zip URL
+  TSQLT_DOWNLOAD_URL: "https://github.com/tSQLt-org/tSQLt/releases/download/v1.0.8317.15834/tSQLt.zip"
+
+# -----------------------------------------------------------------------------
+# Job: sql-unit-tests
+# -----------------------------------------------------------------------------
+sql-unit-tests:
+  stage: test
+  image: python:3.11-slim
+
+  services:
+    - name: mcr.microsoft.com/mssql/server:2022-latest
+      alias: sqlserver
+      variables:
+        ACCEPT_EULA: "Y"
+        MSSQL_SA_PASSWORD: "Str0ngPass!2024"
+        # tSQLt uses CLR assemblies; disable strict security so the install
+        # script can mark tSQLt assemblies as SAFE / EXTERNAL_ACCESS.
+        MSSQL_ENABLE_HADR: "0"
+
+  before_script:
+    # ── System dependencies ──────────────────────────────────────────────────
+    - apt-get update -qq
+    - apt-get install -y -qq curl gnupg2 apt-transport-https ca-certificates
+
+    # ── Microsoft ODBC Driver 18 for SQL Server ──────────────────────────────
+    - curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+    - curl -fsSL https://packages.microsoft.com/config/debian/12/prod.list -o /etc/apt/sources.list.d/mssql-release.list
+    - apt-get update -qq
+    - ACCEPT_EULA=Y apt-get install -y -qq msodbcsql18 unixodbc-dev
+
+    # ── Python dependencies ──────────────────────────────────────────────────
+    - pip install -q -r requirements.txt
+
+    # ── Bootstrap test database, install tSQLt, load test classes ────────────
+    # setup_db.py:
+    #   1. Waits for SQL Server readiness
+    #   2. Creates the test database
+    #   3. Enables CLR + sets TRUSTWORTHY ON (required by tSQLt)
+    #   4. Executes schema DDL (01_create_tables, 02_create_procedures)
+    #   5. Downloads and installs tSQLt
+    #   6. Executes tSQLt test-class SQL files (03_… 04_…)
+    - python tests/setup_db.py
+
+  script:
+    - pytest tests/ --tb=short --junitxml=test-results.xml --html=test-report.html --self-contained-html
+
+  artifacts:
+    when: always
+    reports:
+      junit: test-results.xml
+    paths:
+      - test-results.xml
+      - test-report.html
+    expire_in: 30 days
