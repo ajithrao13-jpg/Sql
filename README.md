@@ -1,17 +1,17 @@
 # sql-unit-testingrepo
 
-This repository contains **SQL Server stored procedures** and a complete **Python-based automated testing framework** that verifies their behaviour on every code push via GitLab CI.
+This repository contains **SQL Server stored procedures** and a complete **tSQLt-based automated testing framework** that verifies their behaviour on every code push via GitLab CI.  No Python, Java, or external test runner is required — the entire pipeline is driven by `sqlcmd`.
 
 ---
 
 ## What problem does this solve?
 
-The repository contains SQL Server stored procedures written in `.rtf` files.  Without automated tests there is no reliable way to know whether a code change breaks existing behaviour.  This project adds a pytest-based integration test framework that:
+The repository contains SQL Server stored procedures written in `.rtf` files.  Without automated tests there is no reliable way to know whether a code change breaks existing behaviour.  This project adds a [tSQLt](https://tsqlt.org/) unit testing framework that:
 
 - Spins up a real SQL Server instance in GitLab CI
 - Creates all required tables and stored procedures in a `TestDB` test database
-- Runs **13 automated tests** covering every major behaviour path
-- Publishes a JUnit XML + HTML test report as a downloadable artefact
+- Runs **13 automated tests** (written entirely in T-SQL) covering every major behaviour path
+- Publishes a JUnit XML test report as a downloadable artefact
 
 ---
 
@@ -24,27 +24,23 @@ The repository contains SQL Server stored procedures written in `.rtf` files.  W
 
 ---
 
-## Files added by this framework
+## Repository layout
 
 ### Root-level files
 
 | File | Purpose |
 |---|---|
-| `requirements.txt` | Python packages needed: `pyodbc` (SQL Server driver), `pytest` (test runner), `pytest-html` (HTML reports) |
-| `pytest.ini` | Tells pytest to discover tests inside the `tests/` folder |
-| `.gitlab-ci.yml` | GitLab CI pipeline definition (see [GitLab CI](#gitlab-ci) below) |
+| `.gitlab-ci.yml` | GitLab CI pipeline definition – uses `sqlcmd` only, no Python (see [GitLab CI](#gitlab-ci) below) |
+| `.gitignore` | Excludes build artefacts and temporary files |
 
-### `tests/` folder
+### `tests/sql/` folder — all test logic lives here as T-SQL
 
 | File | Purpose |
 |---|---|
-| `tests/setup_db.py` | One-time bootstrap script: waits for SQL Server to start, creates `TestDB`, runs all DDL scripts |
-| `tests/conftest.py` | Shared pytest fixtures: one session-scoped database connection (`autocommit=True`) + an autouse fixture that wipes all table data before every test |
 | `tests/sql/01_create_tables.sql` | Creates all 5 tables: `STAGING`, `STAGING_FOLDERS`, `TARGET_FOLDERS`, `HASH_REGISTRY`, `SYS_DELTA_LOG` |
 | `tests/sql/02_create_procedures.sql` | Creates `USP_DELTA_FOLDERS` and `USP_DELTA_MASTER` in the test database |
-| `tests/helpers/db_utils.py` | Reusable helper functions used by the tests (insert rows, call procedures, query counts, compute hashes) |
-| `tests/test_usp_delta_folders.py` | **10 test cases** for `USP_DELTA_FOLDERS` |
-| `tests/test_usp_delta_master.py` | **3 test cases** for `USP_DELTA_MASTER` |
+| `tests/sql/03_tsqlt_tests_folders.sql` | tSQLt test class `TestUSPDeltaFolders` — 10 test procedures (TC01–TC10) |
+| `tests/sql/04_tsqlt_tests_master.sql` | tSQLt test class `TestUSPDeltaMaster` — 3 test procedures (TC01–TC03) |
 | `tests/README.md` | Step-by-step instructions for running the tests locally |
 | `tests/TEST_CASES.md` | Full test-case documentation: why each test exists, inputs used, and expected outputs |
 
@@ -52,28 +48,30 @@ The repository contains SQL Server stored procedures written in `.rtf` files.  W
 
 ## Test summary
 
-### `USP_DELTA_FOLDERS` – 10 test cases
+Tests are written as T-SQL stored procedures inside tSQLt test classes.  tSQLt rolls back a savepoint after each test so every test runs in a clean, isolated state.
 
-| # | Test name | Scenario |
+### `TestUSPDeltaFolders` – 10 test cases
+
+| # | Test procedure | Scenario |
 |---|---|---|
-| TC01 | `test_empty_staging_logs_success` | Nothing in staging → SP exits early, logs `SUCCESS` with all counts = 0 |
-| TC02 | `test_single_new_row_inserted_to_target` | 1 new row → inserted into `TARGET_FOLDERS` and `HASH_REGISTRY` |
-| TC03 | `test_staging_row_marked_as_processed` | After the SP runs, `Is_Processed` is flipped to `'Y'` on every staging row |
-| TC04 | `test_duplicate_staging_rows_deduped` | 3 identical rows → only 1 inserted; `rows_deduped = 2` |
-| TC05 | `test_unchanged_row_not_reinserted` | Hash already known from a previous run → `rows_unchanged = 1`, no new `TARGET` row |
-| TC06 | `test_old_hashes_retired` | A hash present in the registry but absent from the current batch → deleted; `rows_retired = 1` |
-| TC07 | `test_log_captures_all_metrics` | Mixed batch → every counter in `SYS_DELTA_LOG` is exactly correct |
-| TC08 | `test_already_processed_rows_ignored` | Rows already marked `Is_Processed = 'Y'` are completely ignored |
-| TC09 | `test_mixed_new_and_unchanged_rows` | 2 new + 1 pre-existing hash → `rows_upserted = 2`, `rows_unchanged = 1` |
-| TC10 | `test_log_entry_records_entity_name` | `SYS_DELTA_LOG` always records `entity_name = 'FOLDERS'` |
+| TC01 | `test TC01 - empty staging logs success` | Nothing in staging → SP exits early, logs `SUCCESS` with all counts = 0 |
+| TC02 | `test TC02 - single new row inserted to target` | 1 new row → inserted into `TARGET_FOLDERS` and `HASH_REGISTRY` |
+| TC03 | `test TC03 - staging row marked as processed` | After the SP runs, `Is_Processed` is flipped to `'Y'` on every staging row |
+| TC04 | `test TC04 - duplicate staging rows deduped` | 3 identical rows → only 1 inserted; `rows_deduped = 2` |
+| TC05 | `test TC05 - unchanged row not reinserted` | Hash already known from a previous run → `rows_unchanged = 1`, no new `TARGET` row |
+| TC06 | `test TC06 - old hashes retired` | A hash present in the registry but absent from the current batch → deleted; `rows_retired = 1` |
+| TC07 | `test TC07 - log captures all metrics` | Mixed batch → every counter in `SYS_DELTA_LOG` is exactly correct |
+| TC08 | `test TC08 - already processed rows ignored` | Rows already marked `Is_Processed = 'Y'` are completely ignored |
+| TC09 | `test TC09 - mixed new and unchanged rows` | 2 new + 1 pre-existing hash → `rows_upserted = 2`, `rows_unchanged = 1` |
+| TC10 | `test TC10 - log entry records entity name` | `SYS_DELTA_LOG` always records `entity_name = 'FOLDERS'` |
 
-### `USP_DELTA_MASTER` – 3 test cases
+### `TestUSPDeltaMaster` – 3 test cases
 
-| # | Test name | Scenario |
+| # | Test procedure | Scenario |
 |---|---|---|
-| TC01 | `test_master_executes_without_error` | Master procedure completes without raising an exception |
-| TC02 | `test_master_continues_after_missing_sub_procedures` | Non-existent sub-procedures are silently ignored via `TRY/CATCH` |
-| TC03 | `test_master_triggers_folders_processing` | Staging data is processed end-to-end through the master |
+| TC01 | `test TC01 - master executes without error` | Master procedure completes without raising an exception |
+| TC02 | `test TC02 - master continues after missing sub procedures` | Non-existent sub-procedures are silently ignored via `TRY/CATCH` |
+| TC03 | `test TC03 - master triggers folders processing` | Staging data is processed end-to-end through the master |
 
 For full details on each test case (purpose, inputs, and expected outputs) see [`tests/TEST_CASES.md`](tests/TEST_CASES.md).
 
@@ -88,12 +86,16 @@ Your push to GitLab
 GitLab CI pipeline starts (.gitlab-ci.yml)
   │
   ├─ SQL Server 2022 Docker service starts
-  ├─ Microsoft ODBC Driver 18 installed in the Python runner
-  ├─ pip install -r requirements.txt
-  ├─ python tests/setup_db.py   ← creates TestDB, all tables, both procedures
-  └─ pytest tests/ -v           ← runs all 13 tests
+  ├─ sqlcmd (mssql-tools18) installed in the runner
+  ├─ TestDB created; CLR + TRUSTWORTHY ON enabled (tSQLt requirement)
+  ├─ tSQLt downloaded from GitHub and installed via sqlcmd
+  ├─ sqlcmd -i tests/sql/01_create_tables.sql
+  ├─ sqlcmd -i tests/sql/02_create_procedures.sql
+  ├─ sqlcmd -i tests/sql/03_tsqlt_tests_folders.sql
+  ├─ sqlcmd -i tests/sql/04_tsqlt_tests_master.sql
+  └─ tSQLt.RunAll  ← runs all 13 tests; JUnit XML captured via tSQLt.XmlResultFormatter
        │
-       └─ Artefacts published: JUnit XML + HTML report
+       └─ Artefact published: JUnit XML report (test-results.xml)
 ```
 
 ---
@@ -103,10 +105,12 @@ GitLab CI pipeline starts (.gitlab-ci.yml)
 The pipeline is defined in `.gitlab-ci.yml` at the repository root.  On every push it:
 
 1. Starts a **SQL Server 2022** Docker service (`mcr.microsoft.com/mssql/server:2022-latest`)
-2. Installs the **Microsoft ODBC 18 driver** inside the Python runner
-3. Waits for SQL Server to be ready (polls with `sqlcmd`)
-4. Runs `python tests/setup_db.py` to create the schema
-5. Runs `pytest` and publishes a **JUnit XML report** + **HTML report** as artefacts
+2. Installs **`sqlcmd`** (`mssql-tools18`) in the runner — no Python or other runtime needed
+3. Polls SQL Server until it accepts connections
+4. Creates `TestDB`; enables CLR and `TRUSTWORTHY ON` (required by tSQLt)
+5. Downloads and installs tSQLt from GitHub via `curl` / `unzip`
+6. Loads the schema DDL and tSQLt test classes with `sqlcmd -i`
+7. Runs `tSQLt.RunAll` and captures a **JUnit XML report** as an artefact; fails the job if any test fails
 
 ```yaml
 services:
@@ -116,6 +120,8 @@ services:
       ACCEPT_EULA: "Y"
       MSSQL_SA_PASSWORD: "Str0ngPass!2024"
 ```
+
+The `TSQLT_DOWNLOAD_URL` variable is pinned to a specific release and can be overridden via **GitLab CI/CD Settings → Variables**.
 
 ---
 
@@ -138,94 +144,71 @@ docker run \
 
 Wait ~15 seconds for SQL Server to finish starting before proceeding.
 
-### Step 2 – Install the Microsoft ODBC Driver 18
-
-Python talks to SQL Server via the ODBC driver.  Choose your operating system:
+### Step 2 – Install sqlcmd
 
 **Ubuntu / Debian**
 ```bash
-curl https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
-curl https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list \
+curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+  | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+curl -fsSL https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/prod.list \
   | sudo tee /etc/apt/sources.list.d/mssql-release.list
 sudo apt-get update
-sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18 unixodbc-dev
+sudo ACCEPT_EULA=Y apt-get install -y mssql-tools18 unixodbc-dev
+export PATH="$PATH:/opt/mssql-tools18/bin"
 ```
 
 **macOS (Homebrew)**
 ```bash
 brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release
-brew install msodbcsql18
+brew install mssql-tools18
 ```
 
-**Windows (Git Bash / PowerShell / CMD)**
+**Windows**  
+Download and install the latest **sqlcmd** from [aka.ms/sqlcmd](https://aka.ms/sqlcmd).
 
-1. Download the installer directly:  
-   👉 **[msodbcsql.msi (64-bit) – ODBC Driver 18 for SQL Server](https://go.microsoft.com/fwlink/?linkid=2249004)**  
-   *(If that link expires, search "Download ODBC Driver for SQL Server" on [learn.microsoft.com](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server).)*
-
-2. Run the downloaded `.msi` file and follow the installer wizard (accept the licence agreement, keep all defaults).
-
-3. After installation, open a **new** terminal (Git Bash, PowerShell, or CMD) and verify the driver is registered:
-   ```powershell
-   # PowerShell – should print "ODBC Driver 18 for SQL Server"
-   Get-OdbcDriver -Name "ODBC Driver 18 for SQL Server" | Select-Object Name
-   ```
-   Or in Git Bash / CMD:
-   ```bash
-   # Should print lines containing "ODBC Driver 18 for SQL Server"
-   reg query "HKLM\SOFTWARE\ODBC\ODBCINST.INI\ODBC Drivers"
-   ```
-   If you see `ODBC Driver 18 for SQL Server` in the output the driver is correctly installed and `setup_db.py` will work.
-
-### Step 3 – Clone the repository and install Python dependencies
+### Step 3 – Bootstrap the test database and install tSQLt
 
 ```bash
-git clone <your-repo-url>
-cd sql-unit-testingrepo
-pip install -r requirements.txt
+# Create database, enable CLR + TRUSTWORTHY ON
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -C -Q "
+  CREATE DATABASE [TestDB];
+  EXEC sp_configure 'show advanced options', 1; RECONFIGURE;
+  EXEC sp_configure 'clr enabled',           1; RECONFIGURE;
+  EXEC sp_configure 'clr strict security',   0; RECONFIGURE;
+  ALTER DATABASE [TestDB] SET TRUSTWORTHY ON;
+"
+
+# Download and install tSQLt
+curl -fsSL https://github.com/tSQLt-org/tSQLt/releases/download/v1.0.8317.15834/tSQLt.zip \
+  -o /tmp/tsqlt.zip
+unzip -q /tmp/tsqlt.zip -d /tmp/tsqlt
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
+  -i "$(find /tmp/tsqlt -iname 'tSQLt.class.sql' | head -1)"
+
+# Load schema DDL and test classes
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/01_create_tables.sql
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/02_create_procedures.sql
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/03_tsqlt_tests_folders.sql
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/04_tsqlt_tests_master.sql
 ```
 
-> **Python 3.9 or later** is required.
-
-### Step 4 – Bootstrap the test database
-
-This creates the `TestDB` database, all tables, and both stored procedures:
+### Step 4 – Run the tests
 
 ```bash
-python tests/setup_db.py
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
+  -Q "EXEC tSQLt.RunAll"
 ```
 
-You can override any connection setting with environment variables:
-
+**Run a single test class:**
 ```bash
-DB_HOST=localhost \
-DB_PORT=1433 \
-DB_NAME=TestDB \
-DB_USER=sa \
-DB_PASSWORD=Str0ngPass!2024 \
-  python tests/setup_db.py
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
+  -Q "EXEC tSQLt.Run 'TestUSPDeltaFolders'"
 ```
 
-### Step 5 – Run the tests
-
-**Basic run (plain text output):**
+**Run a single test procedure:**
 ```bash
-pytest tests/ -v
-```
-
-**With an HTML report** (opens `test-report.html` in your browser):
-```bash
-pytest tests/ -v --html=test-report.html --self-contained-html
-```
-
-**Run a single test file:**
-```bash
-pytest tests/test_usp_delta_folders.py -v
-```
-
-**Run one specific test:**
-```bash
-pytest tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_single_new_row_inserted_to_target -v
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
+  -Q "EXEC tSQLt.Run '[TestUSPDeltaFolders].[test TC01 - empty staging logs success]'"
 ```
 
 ### Expected output
@@ -233,30 +216,27 @@ pytest tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_single_new_row
 All 13 tests should pass:
 
 ```
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_empty_staging_logs_success        PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_single_new_row_inserted_to_target PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_staging_row_marked_as_processed   PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_duplicate_staging_rows_deduped    PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_unchanged_row_not_reinserted      PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_old_hashes_retired                PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_log_captures_all_metrics          PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_already_processed_rows_ignored    PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_mixed_new_and_unchanged_rows      PASSED
-tests/test_usp_delta_folders.py::TestUSPDeltaFolders::test_log_entry_records_entity_name     PASSED
-tests/test_usp_delta_master.py::TestUSPDeltaMaster::test_master_executes_without_error                       PASSED
-tests/test_usp_delta_master.py::TestUSPDeltaMaster::test_master_continues_after_missing_sub_procedures       PASSED
-tests/test_usp_delta_master.py::TestUSPDeltaMaster::test_master_triggers_folders_processing                  PASSED
++----------------------+
+|Test Execution Summary|
++----------------------+
 
-13 passed in Xs
+|No|Test Case Name                                                  |Dur(ms)|Result |
++--+----------------------------------------------------------------+-------+-------+
+|1 |[TestUSPDeltaFolders].[test TC01 - empty staging logs success]  |    42 |Success|
+|2 |[TestUSPDeltaFolders].[test TC02 - single new row inserted ...]  |    38 |Success|
+...
+|13|[TestUSPDeltaMaster].[test TC03 - master triggers folders ...]   |    55 |Success|
+-----------------------------------------------------------------------------
+Test Case Summary: 13 test case(s) executed, 13 succeeded, 0 failed, 0 errored.
 ```
 
 ### Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| `pyodbc.InterfaceError: ('IM002', ...)` – Windows | ODBC Driver 18 is not installed. Follow **Step 2 → Windows** above: download and run `msodbcsql.msi`, then open a **new** terminal before re-running `setup_db.py` |
-| `pyodbc.InterfaceError: ('IM002', ...)` – Linux/macOS | ODBC Driver 18 is not installed. Follow **Step 2** for your OS above |
-| `Connection refused` on port 1433 | SQL Server container is not running – run `docker ps` and check |
-| `Login failed for user 'sa'` | Wrong password – verify `SA_PASSWORD` matches what you passed to `docker run` |
-| `Database 'TestDB' does not exist` | Run `python tests/setup_db.py` again (Step 4) |
-| Tests fail after a partial run | The `clean_tables` fixture resets state automatically; just re-run `pytest` |
+| `sqlcmd: command not found` | Install `mssql-tools18` (Step 2) and add `/opt/mssql-tools18/bin` to `$PATH` |
+| `Connection refused` on port 1433 | SQL Server container is not running — run `docker ps` and check |
+| `Login failed for user 'sa'` | Wrong password — verify `SA_PASSWORD` matches what you passed to `docker run` |
+| `Database 'TestDB' does not exist` | Re-run the bootstrap commands in Step 3 |
+| `tSQLt is not installed` | Re-run the tSQLt install step in Step 3 |
+| `CLR is disabled` | Ensure `sp_configure 'clr enabled', 1` and `RECONFIGURE` were run against the correct database |
