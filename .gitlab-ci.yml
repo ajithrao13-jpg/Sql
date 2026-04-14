@@ -11,7 +11,7 @@
 # 1. Install sqlcmd (mssql-tools18) in the runner image.
 # 2. Wait for SQL Server to accept connections.
 # 3. Create the test database; enable CLR + TRUSTWORTHY (tSQLt requirement).
-# 4. Download and install tSQLt from GitHub releases.
+# 4. Download and install tSQLt from tsqlt.org.
 # 5. Execute DDL scripts: tables (01_) then stored procedures (02_).
 # 6. Load tSQLt test classes (03_ folders tests, 04_ master tests).
 # 7. Run all tests with tSQLt.RunAll; capture JUnit XML; fail on any error.
@@ -27,7 +27,7 @@ variables:
   DB_PORT: "1433"
   DB_NAME: "TestDB"
   # Pin a specific tSQLt release; override via CI/CD variable to upgrade
-  TSQLT_DOWNLOAD_URL: "https://github.com/tSQLt-org/tSQLt/releases/download/v1.0.8317.15834/tSQLt.zip"
+  TSQLT_DOWNLOAD_URL: "https://tsqlt.org/wp-content/uploads/2022/07/tSQLt_V1.0.8043.39707.zip"
 
 # Convenience alias used throughout this file
 .sqlcmd: &sqlcmd >-

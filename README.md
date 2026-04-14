@@ -88,7 +88,7 @@ GitLab CI pipeline starts (.gitlab-ci.yml)
   ├─ SQL Server 2022 Docker service starts
   ├─ sqlcmd (mssql-tools18) installed in the runner
   ├─ TestDB created; CLR + TRUSTWORTHY ON enabled (tSQLt requirement)
-  ├─ tSQLt downloaded from GitHub and installed via sqlcmd
+  ├─ tSQLt downloaded from tsqlt.org and installed via sqlcmd
   ├─ sqlcmd -i tests/sql/01_create_tables.sql
   ├─ sqlcmd -i tests/sql/02_create_procedures.sql
   ├─ sqlcmd -i tests/sql/03_tsqlt_tests_folders.sql
@@ -108,7 +108,7 @@ The pipeline is defined in `.gitlab-ci.yml` at the repository root.  On every pu
 2. Installs **`sqlcmd`** (`mssql-tools18`) in the runner — no Python or other runtime needed
 3. Polls SQL Server until it accepts connections
 4. Creates `TestDB`; enables CLR and `TRUSTWORTHY ON` (required by tSQLt)
-5. Downloads and installs tSQLt from GitHub via `curl` / `unzip`
+5. Downloads and installs tSQLt from [tsqlt.org](https://tsqlt.org/downloads/) via `curl` / `unzip`
 6. Loads the schema DDL and tSQLt test classes with `sqlcmd -i`
 7. Runs `tSQLt.RunAll` and captures a **JUnit XML report** as an artefact; fails the job if any test fails
 
@@ -179,7 +179,7 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -C -Q "
 "
 
 # Download and install tSQLt
-curl -fsSL https://github.com/tSQLt-org/tSQLt/releases/download/v1.0.8317.15834/tSQLt.zip \
+curl -fsSL https://tsqlt.org/wp-content/uploads/2022/07/tSQLt_V1.0.8043.39707.zip \
   -o /tmp/tsqlt.zip
 unzip -q /tmp/tsqlt.zip -d /tmp/tsqlt
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
