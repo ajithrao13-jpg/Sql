@@ -86,7 +86,7 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -C -Q "
 "
 
 # Download and install tSQLt
-curl -fsSL https://tsqlt.org/wp-content/uploads/2022/07/tSQLt_V1.0.8043.39707.zip \
+curl -fsSL https://tsqlt.org/downloads/tSQLt.zip \
   -o /tmp/tsqlt.zip
 unzip -q /tmp/tsqlt.zip -d /tmp/tsqlt
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \

@@ -121,7 +121,7 @@ services:
       MSSQL_SA_PASSWORD: "Str0ngPass!2024"
 ```
 
-The `TSQLT_DOWNLOAD_URL` variable is pinned to a specific release and can be overridden via **GitLab CI/CD Settings → Variables**.
+The `TSQLT_DOWNLOAD_URL` variable points to the official latest release at tsqlt.org and can be overridden via **GitLab CI/CD Settings → Variables** to pin a specific version.
 
 ---
 
@@ -179,7 +179,7 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -C -Q "
 "
 
 # Download and install tSQLt
-curl -fsSL https://tsqlt.org/wp-content/uploads/2022/07/tSQLt_V1.0.8043.39707.zip \
+curl -fsSL https://tsqlt.org/downloads/tSQLt.zip \
   -o /tmp/tsqlt.zip
 unzip -q /tmp/tsqlt.zip -d /tmp/tsqlt
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \

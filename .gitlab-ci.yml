@@ -26,8 +26,8 @@ variables:
   DB_HOST: "sqlserver"
   DB_PORT: "1433"
   DB_NAME: "TestDB"
-  # Pin a specific tSQLt release; override via CI/CD variable to upgrade
-  TSQLT_DOWNLOAD_URL: "https://tsqlt.org/wp-content/uploads/2022/07/tSQLt_V1.0.8043.39707.zip"
+  # Official tSQLt download URL (always resolves to the latest release); override via CI/CD variable to pin a specific version
+  TSQLT_DOWNLOAD_URL: "https://tsqlt.org/downloads/tSQLt.zip"
 
 # Convenience alias used throughout this file
 .sqlcmd: &sqlcmd >-
