@@ -14,7 +14,8 @@
 # 4. Download and install tSQLt from tsqlt.org.
 # 5. Execute DDL scripts: tables (01_) then stored procedures (02_).
 # 6. Load tSQLt test classes (03_ folders tests, 04_ master tests).
-# 7. Run all tests with tSQLt.RunAll; capture JUnit XML; fail on any error.
+# 7. Load the HTML-report helper procedure (05_).
+# 8. Run all tests with tSQLt.RunAll; capture JUnit XML and HTML; fail on any error.
 # =============================================================================
 
 stages:
@@ -103,6 +104,10 @@ sql-unit-tests:
     - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
         -d "$DB_NAME" -C -i tests/sql/04_tsqlt_tests_master.sql
 
+    # ── Load HTML-report helper procedure ────────────────────────────────────
+    - sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD"
+        -d "$DB_NAME" -C -i tests/sql/05_html_report.sql
+
   script:
     # ── Run all tSQLt tests ───────────────────────────────────────────────────
     # Wrap RunAll in TRY/CATCH so the job continues to the XML-capture step
@@ -122,6 +127,13 @@ sql-unit-tests:
         -Q "SET NOCOUNT ON; EXEC tSQLt.XmlResultFormatter" \
         | sed '/^[[:space:]]*$/d' > test-results.xml
 
+    # ── Capture HTML report ───────────────────────────────────────────────────
+    - |
+      sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" \
+        -d "$DB_NAME" -C -h -1 -y 0 \
+        -Q "SET NOCOUNT ON; EXEC dbo.USP_TSQLT_HTML_REPORT" \
+        | sed '/^[[:space:]]*$/d' > test-results.html
+
     # ── Fail the job if any test failed or errored ────────────────────────────
     - |
       FAILED=$(sqlcmd -S "$DB_HOST,$DB_PORT" -U sa -P "$MSSQL_SA_PASSWORD" \
@@ -140,4 +152,5 @@ sql-unit-tests:
       junit: test-results.xml
     paths:
       - test-results.xml
+      - test-results.html
     expire_in: 30 days

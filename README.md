@@ -110,7 +110,7 @@ The pipeline is defined in `.gitlab-ci.yml` at the repository root.  On every pu
 4. Creates `TestDB`; enables CLR and `TRUSTWORTHY ON` (required by tSQLt)
 5. Downloads and installs tSQLt from [tsqlt.org](https://tsqlt.org/downloads/) via `curl` / `unzip`
 6. Loads the schema DDL and tSQLt test classes with `sqlcmd -i`
-7. Runs `tSQLt.RunAll` and captures a **JUnit XML report** as an artefact; fails the job if any test fails
+7. Runs `tSQLt.RunAll` and captures a **JUnit XML report** (`test-results.xml`) and an **HTML report** (`test-results.html`) as pipeline artefacts; fails the job if any test fails
 
 ```yaml
 services:
@@ -190,6 +190,8 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/01
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/02_create_procedures.sql
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/03_tsqlt_tests_folders.sql
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/04_tsqlt_tests_master.sql
+# Load HTML-report helper procedure
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/05_html_report.sql
 ```
 
 ### Step 4 – Run the tests
@@ -209,6 +211,21 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
 ```bash
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
   -Q "EXEC tSQLt.Run '[TestUSPDeltaFolders].[test TC01 - empty staging logs success]'"
+```
+
+**Export JUnit XML report:**
+```bash
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -h -1 -y 0 \
+  -Q "SET NOCOUNT ON; EXEC tSQLt.XmlResultFormatter" \
+  | sed '/^[[:space:]]*$/d' > test-results.xml
+```
+
+**Export HTML report** (open in any browser):
+```bash
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -h -1 -y 0 \
+  -Q "SET NOCOUNT ON; EXEC dbo.USP_TSQLT_HTML_REPORT" \
+  | sed '/^[[:space:]]*$/d' > test-results.html
+open test-results.html   # macOS — use 'xdg-open' on Linux
 ```
 
 ### Expected output

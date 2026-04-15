@@ -26,7 +26,8 @@ tests/
     ├── 01_create_tables.sql          # Table DDL (drop-safe, idempotent)
     ├── 02_create_procedures.sql      # Stored procedure DDL
     ├── 03_tsqlt_tests_folders.sql    # tSQLt test class: TestUSPDeltaFolders (TC01–TC10)
-    └── 04_tsqlt_tests_master.sql     # tSQLt test class: TestUSPDeltaMaster  (TC01–TC03)
+    ├── 04_tsqlt_tests_master.sql     # tSQLt test class: TestUSPDeltaMaster  (TC01–TC03)
+    └── 05_html_report.sql            # Helper proc USP_TSQLT_HTML_REPORT → test-results.html
 ```
 
 Each test is a T-SQL stored procedure inside a tSQLt test class.  tSQLt wraps every test in a `SAVE TRANSACTION` / `ROLLBACK TO SAVEPOINT` so each test starts with a clean, isolated state — no cleanup code needed.
@@ -97,6 +98,8 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/01
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/02_create_procedures.sql
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/03_tsqlt_tests_folders.sql
 sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/04_tsqlt_tests_master.sql
+# Load HTML-report helper procedure
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -i tests/sql/05_html_report.sql
 ```
 
 ### Run the tests
@@ -119,6 +122,25 @@ sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C \
   -Q "EXEC tSQLt.Run '[TestUSPDeltaFolders].[test TC01 - empty staging logs success]'"
 ```
 
+### Generate test reports locally
+
+After running the tests, export both report formats:
+
+**JUnit XML** (for CI / tooling integration):
+```bash
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -h -1 -y 0 \
+  -Q "SET NOCOUNT ON; EXEC tSQLt.XmlResultFormatter" \
+  | sed '/^[[:space:]]*$/d' > test-results.xml
+```
+
+**HTML** (human-readable, open in any browser):
+```bash
+sqlcmd -S localhost,1433 -U sa -P 'Str0ngPass!2024' -d TestDB -C -h -1 -y 0 \
+  -Q "SET NOCOUNT ON; EXEC dbo.USP_TSQLT_HTML_REPORT" \
+  | sed '/^[[:space:]]*$/d' > test-results.html
+open test-results.html   # macOS — use 'xdg-open' on Linux
+```
+
 ---
 
 ## GitLab CI
@@ -131,4 +153,4 @@ On every push it:
 3. Waits for SQL Server to be ready.
 4. Creates `TestDB`; enables CLR + `TRUSTWORTHY ON`.
 5. Downloads and installs tSQLt; loads the schema DDL and test classes with `sqlcmd -i`.
-6. Runs `tSQLt.RunAll` and publishes a JUnit XML report as an artefact; fails on any test failure.
+6. Runs `tSQLt.RunAll` and publishes a **JUnit XML report** (`test-results.xml`) and an **HTML report** (`test-results.html`) as pipeline artefacts; fails on any test failure.
