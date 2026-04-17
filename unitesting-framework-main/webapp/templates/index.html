@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SQL Unit Testing Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <style>
+    /* ── Base ─────────────────────────────────────────── */
+    :root {
+      --pass-bg: #d1fae5; --pass-fg: #065f46; --pass-border: #6ee7b7;
+      --fail-bg: #fee2e2; --fail-fg: #991b1b; --fail-border: #fca5a5;
+      --skip-bg: #fef3c7; --skip-fg: #92400e;
+      --navy: #0f172a; --blue: #1e40af; --slate: #64748b;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      background: #f1f5f9;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      color: #1e293b;
+      min-height: 100vh;
+    }
+
+    /* ── Hero ─────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 55%, #1d4ed8 100%);
+      color: #fff;
+      padding: 2.4rem 0 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 70% 50%, rgba(99,102,241,.25) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .hero-title {
+      font-size: 1.85rem; font-weight: 800;
+      letter-spacing: -.03em;
+      display: flex; align-items: center; gap: .65rem;
+    }
+    .hero-title .icon-wrap {
+      width: 2.6rem; height: 2.6rem;
+      background: rgba(255,255,255,.15);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.35rem;
+      backdrop-filter: blur(4px);
+    }
+    .hero-sub { opacity: .72; font-size: .95rem; margin-top: .35rem; }
+
+    /* ── Cards ────────────────────────────────────────── */
+    .card {
+      border: 1px solid rgba(0,0,0,.07);
+      border-radius: 14px;
+      box-shadow: 0 1px 8px rgba(0,0,0,.06), 0 4px 20px rgba(0,0,0,.04);
+      background: #fff;
+    }
+    .card-header-custom {
+      background: #fff;
+      border-bottom: 1px solid #f1f5f9;
+      border-radius: 14px 14px 0 0;
+      padding: .9rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+    }
+
+    /* ── Run card ─────────────────────────────────────── */
+    .run-card .card-body { padding: 1.1rem 1.5rem; }
+    #run-btn {
+      background: linear-gradient(135deg, #1d4ed8, #2563eb);
+      border: none;
+      border-radius: 10px;
+      padding: .6rem 1.6rem;
+      font-weight: 600;
+      font-size: .95rem;
+      transition: all .2s;
+      box-shadow: 0 2px 8px rgba(37,99,235,.4);
+    }
+    #run-btn:hover:not(:disabled) {
+      background: linear-gradient(135deg, #1e40af, #1d4ed8);
+      box-shadow: 0 4px 14px rgba(37,99,235,.5);
+      transform: translateY(-1px);
+    }
+    #run-btn:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+    /* ── Metric tiles ─────────────────────────────────── */
+    .metric-tile {
+      border-radius: 14px;
+      padding: 1.4rem 1.1rem 1.2rem;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .metric-tile .m-icon {
+      font-size: 1.5rem;
+      opacity: .35;
+      position: absolute; top: .8rem; right: .9rem;
+    }
+    .metric-tile .m-val {
+      font-size: 2.4rem; font-weight: 800; line-height: 1;
+      letter-spacing: -.04em;
+    }
+    .metric-tile .m-lbl {
+      font-size: .68rem; text-transform: uppercase;
+      letter-spacing: .1em; font-weight: 600;
+      margin-top: .3rem; opacity: .6;
+    }
+    .tile-total   { background: #fff; }
+    .tile-passed  { background: var(--pass-bg); }
+    .tile-failed  { background: var(--fail-bg); }
+    .tile-time    { background: #eff6ff; }
+    .tile-passed .m-val { color: #15803d; }
+    .tile-failed .m-val { color: #dc2626; }
+    .tile-time   .m-val { color: #2563eb; }
+
+    /* ── Pass-rate bar ────────────────────────────────── */
+    .pass-rate-bar {
+      height: 8px; border-radius: 99px;
+      background: #e2e8f0;
+      overflow: hidden;
+      margin-top: .6rem;
+    }
+    .pass-rate-fill {
+      height: 100%; border-radius: 99px;
+      background: linear-gradient(90deg, #22c55e, #16a34a);
+      transition: width .6s ease;
+    }
+
+    /* ── Status badges ────────────────────────────────── */
+    .badge-status {
+      display: inline-flex; align-items: center; gap: .3em;
+      font-size: .75rem; font-weight: 700;
+      padding: .28em .75em;
+      border-radius: 50px;
+      letter-spacing: .03em;
+    }
+    .badge-pass { background: var(--pass-bg); color: var(--pass-fg); border: 1px solid var(--pass-border); }
+    .badge-fail { background: var(--fail-bg); color: var(--fail-fg); border: 1px solid var(--fail-border); }
+    .badge-skip { background: var(--skip-bg); color: var(--skip-fg); border: 1px solid #fcd34d; }
+
+    /* ── Results table ────────────────────────────────── */
+    #results-table { font-size: .875rem; }
+    #results-table thead th {
+      font-size: .7rem; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--slate);
+      background: #f8fafc; border-bottom: 2px solid #e2e8f0;
+      padding: .75rem 1rem;
+    }
+    #results-table td { padding: .75rem 1rem; vertical-align: middle; border-color: #f1f5f9; }
+    tr.row-pass:hover td { background: #f0fdf4; }
+    tr.row-fail td       { background: #fff8f8; }
+    tr.row-fail:hover td { background: #fff1f1; }
+    tr.row-skip td       { background: #fffbeb; }
+
+    /* clickable rows */
+    tr.expandable { cursor: pointer; }
+    tr.expandable td:last-child .expand-icon { transition: transform .25s; }
+    tr.expandable.expanded td:last-child .expand-icon { transform: rotate(180deg); }
+
+    /* ── Failure detail panel ─────────────────────────── */
+    .failure-panel {
+      background: #fff5f5;
+      border-left: 4px solid #f87171;
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.2rem;
+    }
+    .failure-panel .panel-title {
+      font-size: .78rem; font-weight: 700; color: #dc2626;
+      text-transform: uppercase; letter-spacing: .06em;
+      margin-bottom: .7rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .assertion-block {
+      background: #fff;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      margin-bottom: .65rem;
+      overflow: hidden;
+    }
+    .assertion-block:last-child { margin-bottom: 0; }
+    .assertion-header {
+      padding: .5rem .85rem;
+      background: #fef2f2;
+      border-bottom: 1px solid #fecaca;
+      font-size: .78rem; font-weight: 600; color: #b91c1c;
+    }
+    .assertion-body { padding: .6rem .85rem; font-size: .8rem; }
+    .assertion-body .got-line {
+      color: #dc2626; font-weight: 600; margin-bottom: .4rem;
+    }
+    .assertion-body .sql-label {
+      font-size: .68rem; text-transform: uppercase;
+      letter-spacing: .07em; color: #94a3b8; font-weight: 700;
+      margin-bottom: .25rem;
+    }
+    .sql-block {
+      background: #1e293b;
+      color: #7dd3fc;
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: .75rem;
+      border-radius: 6px;
+      padding: .55rem .8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    /* raw pre fallback */
+    .raw-fail-pre {
+      background: #1e293b;
+      color: #f9a8d4;
+      font-size: .73rem;
+      border-radius: 8px;
+      padding: .85rem 1rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+
+    /* ── Success detail panel ─────────────────────────── */
+    .success-panel {
+      background: #f0fdf4;
+      border-left: 4px solid #4ade80;
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.2rem;
+    }
+    .success-panel .panel-title {
+      font-size: .78rem; font-weight: 700; color: #15803d;
+      text-transform: uppercase; letter-spacing: .06em;
+      margin-bottom: .65rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .success-item {
+      background: #fff;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      padding: .5rem .85rem;
+      font-size: .82rem;
+      color: #166534;
+      display: flex; align-items: center; gap: .5rem;
+      margin-bottom: .5rem;
+    }
+    .success-item:last-child { margin-bottom: 0; }
+
+    /* ── Skip detail panel ────────────────────────────── */
+    .skip-panel {
+      background: #fffbeb;
+      border-left: 4px solid #fcd34d;
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.2rem;
+    }
+    .skip-panel .panel-title {
+      font-size: .78rem; font-weight: 700; color: #92400e;
+      text-transform: uppercase; letter-spacing: .06em;
+      margin-bottom: .5rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+
+    /* detail collapse row */
+    tr.detail-row td { padding: 0; border-top: none !important; }
+    tr.detail-row .detail-inner { padding: .5rem 1rem .9rem 3.5rem; }
+
+    /* ── Console ──────────────────────────────────────── */
+    pre.console {
+      font-family: 'Consolas', 'Cascadia Code', monospace;
+      font-size: .71rem;
+      max-height: 380px;
+      overflow-y: auto;
+      background: #0f172a;
+      color: #94a3b8;
+      border-radius: 0 0 14px 14px;
+      padding: 1.1rem 1.25rem;
+      margin: 0;
+      line-height: 1.55;
+    }
+
+    /* ── Download buttons ─────────────────────────────── */
+    .btn-dl {
+      border-radius: 8px; font-size: .84rem; font-weight: 600;
+      padding: .42rem 1.1rem;
+      transition: all .18s;
+    }
+    .btn-dl:hover { transform: translateY(-1px); }
+
+    /* ── Misc ─────────────────────────────────────────── */
+    #spinner { display: none; }
+    #results-section { animation: fadeUp .3s ease; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .filter-btn.active { font-weight: 700; }
+
+    .section-title {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--slate);
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .empty-state {
+      text-align: center; padding: 2.5rem;
+      color: var(--slate); font-size: .9rem;
+    }
+    .empty-state i { font-size: 2.5rem; opacity: .3; display: block; margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── Hero ─────────────────────────────────────────── -->
+<div class="hero">
+  <div class="container">
+    <div class="hero-title">
+      <span class="icon-wrap"><i class="bi bi-database-check"></i></span>
+      SQL Unit Testing Dashboard
+    </div>
+    <p class="hero-sub">
+      <i class="bi bi-lightning-charge-fill me-1"></i>
+      Execute SQL test suites against SQL Server and inspect results — all from your browser.
+    </p>
+  </div>
+</div>
+
+<!-- ── Main ──────────────────────────────────────────── -->
+<div class="container my-4">
+
+  <!-- Run card -->
+  <div class="card run-card mb-4">
+    <div class="card-body d-flex flex-wrap align-items-center gap-3">
+      <button id="run-btn" class="btn btn-primary" onclick="runTests()">
+        <i class="bi bi-play-fill me-1"></i>Run Unit Tests
+      </button>
+      <div id="spinner" class="d-flex align-items-center gap-2 text-secondary">
+        <div class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></div>
+        <span id="spinner-text" class="fw-semibold small">Setting up database…</span>
+      </div>
+      <span id="run-timestamp" class="ms-auto text-muted small fw-semibold" style="display:none"></span>
+    </div>
+  </div>
+
+  <!-- Run error alert -->
+  <div id="error-section" class="alert alert-danger border-0 d-flex gap-3 align-items-start shadow-sm"
+       style="border-radius:12px;display:none!important">
+    <i class="bi bi-exclamation-octagon-fill fs-5 flex-shrink-0 mt-1"></i>
+    <div>
+      <strong class="d-block mb-1">Test run failed</strong>
+      <pre id="error-output" class="mb-0" style="font-size:.8rem;white-space:pre-wrap;max-height:260px;overflow-y:auto"></pre>
+    </div>
+  </div>
+
+  <!-- ── Results section ──────────────────────────────── -->
+  <div id="results-section" style="display:none">
+
+    <!-- Metric tiles -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-lg-3">
+        <div class="metric-tile card tile-total">
+          <i class="bi bi-grid-3x3-gap m-icon"></i>
+          <div class="m-val" id="m-total">–</div>
+          <div class="m-lbl">Total Tests</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-tile card tile-passed">
+          <i class="bi bi-check-circle-fill m-icon"></i>
+          <div class="m-val" id="m-passed">–</div>
+          <div class="m-lbl">Passed</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-tile card tile-failed">
+          <i class="bi bi-x-circle-fill m-icon"></i>
+          <div class="m-val" id="m-failed">–</div>
+          <div class="m-lbl">Failed</div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="metric-tile card tile-time">
+          <i class="bi bi-stopwatch-fill m-icon"></i>
+          <div class="m-val" id="m-duration">–</div>
+          <div class="m-lbl">Duration (s)</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pass rate bar -->
+    <div class="card mb-4 px-4 py-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span class="section-title"><i class="bi bi-bar-chart-fill"></i>Pass Rate</span>
+        <span id="pass-rate-label" class="fw-bold text-success small">–</span>
+      </div>
+      <div class="pass-rate-bar">
+        <div class="pass-rate-fill" id="pass-rate-fill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Download card -->
+    <div class="card mb-4">
+      <div class="card-body d-flex flex-wrap align-items-center gap-3 py-3">
+        <span class="section-title"><i class="bi bi-download"></i>Download Report</span>
+        <a href="/download/html" class="btn btn-outline-primary btn-dl" target="_blank">
+          <i class="bi bi-filetype-html me-1"></i>HTML Report
+        </a>
+        <a href="/download/xml" class="btn btn-outline-secondary btn-dl" target="_blank">
+          <i class="bi bi-filetype-xml me-1"></i>JUnit XML
+        </a>
+      </div>
+    </div>
+
+    <!-- Results table -->
+    <div class="card mb-4">
+      <div class="card-header-custom">
+        <span class="section-title"><i class="bi bi-list-check"></i>Test Results</span>
+        <div class="btn-group btn-group-sm" role="group">
+          <button class="btn btn-outline-secondary filter-btn active" onclick="setFilter('all',this)">All</button>
+          <button class="btn btn-outline-success  filter-btn"        onclick="setFilter('PASS',this)">Passed</button>
+          <button class="btn btn-outline-danger   filter-btn"        onclick="setFilter('FAIL',this)">Failed</button>
+        </div>
+      </div>
+      <div class="table-responsive">
+        <table class="table mb-0" id="results-table">
+          <thead>
+            <tr>
+              <th style="width:3rem">#</th>
+              <th style="width:14rem">Procedure</th>
+              <th>Test Case</th>
+              <th style="width:7.5rem">Status</th>
+              <th style="width:6rem">Time</th>
+              <th style="width:2.5rem"></th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Console output (collapsible) -->
+    <div class="card mb-5">
+      <div class="card-header-custom"
+           style="cursor:pointer;border-radius:14px"
+           data-bs-toggle="collapse" data-bs-target="#console-collapse" aria-expanded="false">
+        <span class="section-title"><i class="bi bi-terminal-fill"></i>Console Output</span>
+        <i class="bi bi-chevron-down text-muted"></i>
+      </div>
+      <div class="collapse" id="console-collapse">
+        <pre class="console" id="console-output"></pre>
+      </div>
+    </div>
+
+  </div><!-- /results-section -->
+
+</div><!-- /container -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  let pollTimer    = null;
+  let allTests     = [];
+  let activeFilter = 'all';
+  let expandedRows = new Set();
+
+  /* ─── Run ──────────────────────────────────────────── */
+  function runTests() {
+    document.getElementById('run-btn').disabled = true;
+    document.getElementById('spinner').style.display = 'flex';
+    document.getElementById('spinner-text').textContent = 'Setting up database…';
+    document.getElementById('error-section').style.display = 'none';
+    expandedRows.clear();
+
+    fetch('/run', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => { if (d.error) { showError(d.error); return; } startPolling(); })
+      .catch(e => showError(String(e)));
+  }
+
+  /* ─── Poll ─────────────────────────────────────────── */
+  function startPolling() {
+    clearInterval(pollTimer);
+    pollTimer = setInterval(pollStatus, 2000);
+  }
+
+  function pollStatus() {
+    fetch('/status')
+      .then(r => r.json())
+      .then(d => {
+        if (d.status === 'running') {
+          document.getElementById('spinner-text').textContent = 'Running tests…';
+        } else if (d.status === 'done') {
+          clearInterval(pollTimer);
+          stopSpinner();
+          showResults(d);
+        } else if (d.status === 'error') {
+          clearInterval(pollTimer);
+          stopSpinner();
+          showError((d.error || '') + (d.output ? '\n\n' + d.output : ''));
+        }
+      })
+      .catch(e => console.error('poll error', e));
+  }
+
+  /* ─── Helpers ──────────────────────────────────────── */
+  function stopSpinner() {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('run-btn').disabled = false;
+  }
+
+  function showError(msg) {
+    stopSpinner();
+    document.getElementById('error-output').textContent = msg;
+    document.getElementById('error-section').style.display = 'flex';
+  }
+
+  function showResults(data) {
+    const s = data.summary;
+    document.getElementById('m-total').textContent    = s.total;
+    document.getElementById('m-passed').textContent   = s.passed;
+    document.getElementById('m-failed').textContent   = s.failed;
+    document.getElementById('m-duration').textContent = s.duration;
+
+    const pct = s.total > 0 ? Math.round((s.passed / s.total) * 100) : 0;
+    document.getElementById('pass-rate-fill').style.width = pct + '%';
+    document.getElementById('pass-rate-label').textContent = pct + '% passing';
+    document.getElementById('pass-rate-label').className =
+      'fw-bold small ' + (pct === 100 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-danger');
+
+    const ts = data.finished_at
+      ? 'Last run: ' + new Date(data.finished_at).toLocaleTimeString()
+      : '';
+    const el = document.getElementById('run-timestamp');
+    el.textContent = ts;
+    el.style.display = ts ? '' : 'none';
+
+    allTests = data.tests;
+    renderTable(allTests);
+    document.getElementById('console-output').textContent = data.output || '(no output)';
+    document.getElementById('results-section').style.display = 'block';
+  }
+
+  /* ─── Filter ───────────────────────────────────────── */
+  function setFilter(f, btn) {
+    activeFilter = f;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    expandedRows.clear();
+    renderTable(allTests);
+  }
+
+  /* ─── Table render ─────────────────────────────────── */
+  function renderTable(tests) {
+    const tbody = document.getElementById('results-tbody');
+    tbody.innerHTML = '';
+
+    const visible = activeFilter === 'all'
+      ? tests
+      : tests.filter(t => t.status === activeFilter);
+
+    if (visible.length === 0) {
+      tbody.innerHTML = `
+        <tr><td colspan="6">
+          <div class="empty-state">
+            <i class="bi bi-search"></i>
+            No tests match this filter.
+          </div>
+        </td></tr>`;
+      return;
+    }
+
+    visible.forEach((t, i) => {
+      const uid      = 'row-' + i;
+      const rowClass = t.status === 'FAIL' ? 'row-fail' : t.status === 'SKIP' ? 'row-skip' : 'row-pass';
+      const badgeCls = t.status === 'PASS' ? 'badge-pass' : t.status === 'FAIL' ? 'badge-fail' : 'badge-skip';
+      const badgeIcon = t.status === 'PASS' ? 'bi-check-lg' : t.status === 'FAIL' ? 'bi-x-lg' : 'bi-skip-forward-fill';
+
+      const mainRow = `
+        <tr class="${rowClass} expandable"
+            id="${uid}"
+            onclick="toggleDetail('${uid}','${uid}-detail')">
+          <td class="text-muted" style="font-size:.8rem">${i + 1}</td>
+          <td><span class="badge bg-light text-secondary border" style="font-size:.72rem;font-weight:600">${esc(t.group)}</span></td>
+          <td class="fw-semibold">${esc(t.display_name)}</td>
+          <td><span class="badge-status ${badgeCls}"><i class="bi ${badgeIcon}"></i>${t.status}</span></td>
+          <td class="text-muted" style="font-size:.82rem">${t.time}s</td>
+          <td style="text-align:center"><i class="bi bi-chevron-down expand-icon text-muted" style="font-size:.8rem"></i></td>
+        </tr>`;
+
+      let panelHtml = '';
+      if (t.status === 'FAIL') {
+        panelHtml = buildFailurePanel(t.message);
+      } else if (t.status === 'PASS') {
+        panelHtml = buildSuccessPanel(t);
+      } else {
+        panelHtml = buildSkipPanel(t);
+      }
+
+      const detailRow = `
+        <tr class="detail-row" id="${uid}-detail" style="display:none">
+          <td colspan="6">
+            <div class="detail-inner">
+              ${panelHtml}
+            </div>
+          </td>
+        </tr>`;
+
+      tbody.insertAdjacentHTML('beforeend', mainRow + detailRow);
+    });
+  }
+
+  function toggleDetail(rowId, detailId) {
+    const mainRow   = document.getElementById(rowId);
+    const detailRow = document.getElementById(detailId);
+    if (!detailRow) return;
+
+    const isOpen = detailRow.style.display !== 'none';
+    detailRow.style.display = isOpen ? 'none' : '';
+    mainRow.classList.toggle('expanded', !isOpen);
+  }
+
+  /* ─── Success panel builder ───────────────────────── */
+  function buildSuccessPanel(t) {
+    return `<div class="success-panel">
+      <div class="panel-title"><i class="bi bi-check-circle-fill"></i>Test Passed Successfully</div>
+      <div class="success-item">
+        <i class="bi bi-check2-circle" style="color:#22c55e;font-size:1rem;flex-shrink:0"></i>
+        <span>All assertions returned the expected value <strong>(1)</strong> — test execution completed without errors.</span>
+      </div>
+      <div class="success-item">
+        <i class="bi bi-stopwatch" style="color:#16a34a;font-size:1rem;flex-shrink:0"></i>
+        <span>Execution time: <strong>${t.time}s</strong></span>
+      </div>
+    </div>`;
+  }
+
+  /* ─── Skip panel builder ───────────────────────────── */
+  function buildSkipPanel(t) {
+    return `<div class="skip-panel">
+      <div class="panel-title"><i class="bi bi-skip-forward-fill"></i>Test Skipped</div>
+      <span style="font-size:.82rem;color:#92400e">
+        ${t.message ? esc(t.message) : 'This test was skipped during the run.'}
+      </span>
+    </div>`;
+  }
+
+  /* ─── Failure panel builder ────────────────────────── */
+  function buildFailurePanel(msg) {
+    /* Try to parse structured assertion messages:
+       "Test 'X' – N assertion(s) failed:\n  [1] Assertion 1 '...' FAILED ...\n    SQL: ..."
+    */
+    const blocks = parseAssertions(msg);
+
+    if (blocks.length === 0) {
+      return `<div class="failure-panel">
+        <div class="panel-title"><i class="bi bi-bug-fill"></i>Failure Detail</div>
+        <pre class="raw-fail-pre">${esc(msg)}</pre>
+      </div>`;
+    }
+
+    const inner = blocks.map(b => `
+      <div class="assertion-block">
+        <div class="assertion-header">
+          <i class="bi bi-x-octagon me-1"></i>${esc(b.header)}
+        </div>
+        <div class="assertion-body">
+          ${b.got ? `<div class="got-line"><i class="bi bi-arrow-return-right me-1"></i>${esc(b.got)}</div>` : ''}
+          ${b.sql ? `<div class="sql-label"><i class="bi bi-code-slash me-1"></i>SQL</div><div class="sql-block">${esc(b.sql)}</div>` : ''}
+        </div>
+      </div>`).join('');
+
+    return `<div class="failure-panel">
+      <div class="panel-title"><i class="bi bi-bug-fill"></i>Failure Detail — ${blocks.length} assertion(s) failed</div>
+      ${inner}
+    </div>`;
+  }
+
+  function parseAssertions(msg) {
+    /* Split on "[N]" markers produced by test_sql_runner.py */
+    const chunks = msg.split(/\s*\[\d+\]\s+/).filter(Boolean);
+    if (chunks.length === 0) return [];
+
+    /* Discard the preamble line ("Test '...' – N assertion(s) failed:") */
+    const assertions = chunks[0].match(/^Test .+ \u2013 \d+ assertion\(s\) failed:/)
+      ? chunks.slice(1)
+      : chunks;
+
+    return assertions.map(chunk => {
+      /* Each chunk looks like:
+           Assertion N 'description' FAILED (got X, expected 1).
+               SQL: SELECT ...
+      */
+      const lines = chunk.split('\n').map(l => l.trim()).filter(Boolean);
+      const header = lines[0] || chunk.trim();
+
+      /* Extract SQL — everything from the "SQL:" line onwards */
+      const sqlIdx = lines.findIndex(l => l.startsWith('SQL:'));
+      const sql = sqlIdx >= 0
+        ? lines.slice(sqlIdx)
+            .map((l, idx) => idx === 0 ? l.replace(/^SQL:\s*/, '') : l)
+            .join('\n')
+            .trim()
+        : '';
+
+      /* Extract "got X" from the header — non-greedy to stop at first ", expected" */
+      const gotMatch = header.match(/\(got (.+?),\s*expected/);
+      const got = gotMatch ? 'Got: ' + gotMatch[1] : '';
+
+      return { header, got, sql };
+    }).filter(b => b.header);
+  }
+
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+</script>
+</body>
+</html>
+
