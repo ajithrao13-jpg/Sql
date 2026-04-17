@@ -1,0 +1,59 @@
+version: "3.9"
+
+# ── Local development only ────────────────────────────────────────────────────
+# Credentials are read from a .env file (or from the environment).
+# Copy .env.example to .env and change the password before first use:
+#   cp .env.example .env
+
+services:
+
+  # ── SQL Server 2022 ──────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "${DB_PASSWORD:-Str0ngPass!2024}"
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    healthcheck:
+      # sqlcmd is bundled in the image; -No disables the SSL warning
+      test:
+        - CMD-SHELL
+        - >
+          /opt/mssql-tools18/bin/sqlcmd
+          -S localhost -U sa -P "${DB_PASSWORD:-Str0ngPass!2024}"
+          -Q 'SELECT 1' -No
+          || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  # ── Web Application ──────────────────────────────────────────────────────
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      DB_HOST: sqlserver
+      DB_PORT: "1433"
+      DB_NAME: "${DB_NAME:-TestDB}"
+      DB_USER: "${DB_USER:-sa}"
+      DB_PASSWORD: "${DB_PASSWORD:-Str0ngPass!2024}"
+      REPORTS_DIR: /app/reports
+    volumes:
+      # Mount the testcases folder so you can edit .sql files on the host
+      # and they are picked up on the next test run (no rebuild needed).
+      - ./tests/sql/testcases:/app/tests/sql/testcases
+      # Persist generated reports across restarts.
+      - reports_data:/app/reports
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+volumes:
+  reports_data:
+
